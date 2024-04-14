@@ -1,0 +1,46 @@
+#############
+#  BACKEND  #
+#############
+# Media
+backend/media/*/*
+backend/env
+backend/core/__pycache__
+backend/core/*.pyc
+backend/api/__pycache__
+backend/api/*.pyc
+backend/api/migrations/__pycache__
+backend/api/migrations/*.pyc
+backend/api/utils/__pycache__
+backend/api/utils/*.pyc
+
+# TODO:Database Uncomment later
+backend/db.sqlite3
+backend/api/migrations
+
+#############
+# FRONTEND  #
+#############
+# Logs
+frontend/logs
+frontend/*.log
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+frontend/lerna-debug.log*
+
+frontend/node_modules
+frontend/dist
+frontend/dist-ssr
+frontend/*.local
+
+# Editor directories and files
+frontend/.vscode/*
+frontend/!.vscode/extensions.json
+frontend/.idea
+frontend/.DS_Store
+frontend/*.suo
+frontend/*.ntvs*
+frontend/*.njsproj
+frontend/*.sln
+frontend/*.sw?
