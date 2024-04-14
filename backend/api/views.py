@@ -1,12 +1,20 @@
 from rest_framework import generics, status
 from rest_framework.response import Response
-from .models import CertificateTemplate, Participant
-from .serializers import CertificateTemplateSerializer, ParticipantSerializer
+from .models import CertificateTemplate, Participant, ZippedImages
+from .serializers import (
+    CertificateTemplateSerializer,
+    ParticipantSerializer,
+    ZippedImagesSerializer,
+)
 from rest_framework.parsers import MultiPartParser, FormParser
 
 # extras
 from .utils.csv_parser import parseCSV
-from django.conf import settings
+from .utils.imageGen import generateCertificate
+from .utils.zipGen import generateZip
+from django.core.files.uploadedfile import SimpleUploadedFile
+from PIL import Image
+
 
 class CertificateTemplateView(generics.ListCreateAPIView):
     queryset = CertificateTemplate.objects.all()
@@ -59,18 +67,34 @@ class CertificateTemplateView(generics.ListCreateAPIView):
         if certificate_template_serializer.is_valid():
             certificate_template = certificate_template_serializer.save()
 
-            #Parsing
+            # Parsing
             csv_file = certificate_template.csv
             csv_content = parseCSV(csv_file)
-            print("Exiting parsing")
-            print(csv_content)
-            print("Exiting content")
             participants = []
             for row in csv_content:
-                print(row)
+                certificateInBytes = generateCertificate(
+                    certificate_template.image.path,
+                    row.get("name", ""),
+                    certificate_template.fontSize,
+                    certificate_template.textPosition,
+                )
+                # certificate = InMemoryUploadedFile(
+                #     certificateInBytes,
+                #     None,
+                #     f"{certificate_template.competitionName}-{row.get('name', '').replace(' ', '_')}.{certificate_template.image.name.split('.')[-1]}",
+                #     f"image/{certificate_template.image.name.split('.')[-1]}",
+                #     certificateInBytes.tell(),
+                #     None,
+                # )
+                certificate = SimpleUploadedFile(
+                    name=f"{certificate_template.competitionName}-{row.get('name', '').replace(' ', '_')}.{certificate_template.image.name.split('.')[-1]}",
+                    content=certificateInBytes.read(),
+                    content_type=f"image/{certificate_template.image.name.split('.')[-1]}",
+                )
                 participant_data = {
                     "name": row.get("name", ""),
                     "email": row.get("email", ""),
+                    "certificate": certificate,
                     "certificateTemplate": certificate_template.code,
                 }
                 participant_serializer = ParticipantSerializer(data=participant_data)
@@ -82,6 +106,9 @@ class CertificateTemplateView(generics.ListCreateAPIView):
                         participant_serializer.errors,
                         status=status.HTTP_400_BAD_REQUEST,
                     )
+
+            # Zipping
+            generateZip(participants)
 
             return Response(
                 {"message": "Certificates and Participants created successfully"},
@@ -98,3 +125,22 @@ class ParticipantView(generics.ListCreateAPIView):
     queryset = Participant.objects.all()
     serializer_class = ParticipantSerializer
     parser_classes = (MultiPartParser, FormParser)
+
+
+class ZippedImagesView(generics.ListCreateAPIView):
+    queryset = ZippedImages.objects.all()
+    serializer_class = ZippedImagesSerializer
+    parser_classes = (MultiPartParser, FormParser)
+
+    def create(self, request):
+        # Check if the files are valid or not
+        if "zipFile" not in request.FILES:
+            return Response(
+                {"error": "No Zip file generated"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        uploaded_zip_file = request.FILES["zipFile"]
+        if uploaded_zip_file.content_type != "application/zip":
+            return Response(
+                {"error": "Unsupported file type. Please upload a valid CSV file."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )

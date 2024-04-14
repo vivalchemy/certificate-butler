@@ -20,7 +20,12 @@ def randomParticipantCode(length=8):
             break
     return code
 
-
+def randomZippedImagesCode(length=6):
+    while True:
+        code = "".join(random.choices(string.ascii_uppercase, k=length))
+        if ZippedImages.objects.filter(code=code).count() == 0:
+            break
+    return code
 # Create your models here.
 # Stores the templates of the certificates and other details
 class CertificateTemplate(models.Model):
@@ -50,7 +55,20 @@ class Participant(models.Model):
     )
     name = models.CharField(max_length=100)
     email = models.EmailField(max_length=100, null=True)
-    # certificate = models.ImageField(upload_to="certificates/")
+    certificate = models.ImageField(upload_to="certificates/")
+    certificateTemplate = models.ForeignKey(
+        CertificateTemplate, on_delete=models.CASCADE
+    )
+
+    def __str__(self):
+        return f"{self.name}:{self.code}"
+
+
+class ZippedImages(models.Model):
+    code = models.CharField(
+        max_length=6, primary_key=True, default=randomZippedImagesCode
+    )
+    zipFile = models.FileField(upload_to="zips/")
     certificateTemplate = models.ForeignKey(
         CertificateTemplate, on_delete=models.CASCADE
     )
