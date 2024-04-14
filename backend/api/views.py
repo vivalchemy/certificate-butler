@@ -13,7 +13,7 @@ from .utils.csv_parser import parseCSV
 from .utils.imageGen import generateCertificate
 from .utils.zipGen import generateZip
 from django.core.files.uploadedfile import SimpleUploadedFile
-from PIL import Image
+from django.http import JsonResponse
 
 
 class CertificateTemplateView(generics.ListCreateAPIView):
@@ -87,7 +87,7 @@ class CertificateTemplateView(generics.ListCreateAPIView):
                 #     None,
                 # )
                 certificate = SimpleUploadedFile(
-                    name=f"{certificate_template.competitionName}-{row.get('name', '').replace(' ', '_')}.{certificate_template.image.name.split('.')[-1]}",
+                    name=f"{certificate_template.competitionName.replace(' ', '_')}-{row.get('name', '').replace(' ', '_')}.{certificate_template.image.name.split('.')[-1]}",
                     content=certificateInBytes.read(),
                     content_type=f"image/{certificate_template.image.name.split('.')[-1]}",
                 )
@@ -108,10 +108,31 @@ class CertificateTemplateView(generics.ListCreateAPIView):
                     )
 
             # Zipping
-            generateZip(participants)
+            zipBytes = generateZip(participants)
+            zipFile = SimpleUploadedFile(
+                name=f"{certificate_template.competitionName.replace(' ', '_')}.zip",
+                content=zipBytes.read(),
+                content_type="application/zip",
+            )
+            zipData = {
+                "zipFile": zipFile,
+                "certificateTemplate": certificate_template.code,
+            }
+            zipped_images_serializer = ZippedImagesSerializer(data=zipData)
+            if zipped_images_serializer.is_valid():
+                zipped_images = zipped_images_serializer.save()
+                print("Zipped Images: ", zipped_images)
+            else:
+                return Response(
+                    zipped_images_serializer.errors,
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             return Response(
-                {"message": "Certificates and Participants created successfully"},
+                {
+                    "message": "Certificates and Participants and zip created successfully",
+                    "code": certificate_template.code,
+                },
                 status=status.HTTP_201_CREATED,
             )
 
@@ -125,6 +146,24 @@ class ParticipantView(generics.ListCreateAPIView):
     queryset = Participant.objects.all()
     serializer_class = ParticipantSerializer
     parser_classes = (MultiPartParser, FormParser)
+
+    def get(self, request):
+        id = request.GET.get("id")
+        if not id:
+            return Response(
+                {"error": "Certificate Id not found"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        participants = Participant.objects.filter(certificateTemplate=id)
+        response = []
+        for participant in participants:
+            code = participant.code
+            name = participant.name
+            email = participant.email
+            href = participant.certificate.url
+            response.append({"code": code, "name": name, "email": email, "href": href})
+
+        return JsonResponse({"data": response})
 
 
 class ZippedImagesView(generics.ListCreateAPIView):
@@ -144,3 +183,19 @@ class ZippedImagesView(generics.ListCreateAPIView):
                 {"error": "Unsupported file type. Please upload a valid CSV file."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+    def get(self, request):
+        id = request.GET.get("id")
+        if not id:
+            return Response(
+                {"error": "Certificate Id not found"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        zippedImages = ZippedImages.objects.filter(certificateTemplate=id)
+        response = []
+        for file in zippedImages:
+            href = file.zipFile.url
+            code = file.code
+            response.append({"href": href, "code": code})
+
+        return JsonResponse({"data": response})
